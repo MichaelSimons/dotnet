@@ -21,6 +21,13 @@
     <MSBuild Projects="$(RepoProjectsDir)$(RootRepo).proj" Targets="WritePrebuiltUsageData;ReportPrebuiltUsage" />
   </Target>
 
+  <UsingTask TaskName="Microsoft.DotNet.UnifiedBuild.Tasks.WriteSBRPUsageReport" AssemblyFile="$(MicrosoftDotNetUnifiedBuildTasksAssembly)" TaskFactory="TaskHostFactory" />
+  <Target Name="ReportSbrpUsage"
+          AfterTargets="Build"
+          Condition="'$(SkipReportSbrpUsage)' != 'true'">
+    <WriteSbrpUsageReport SbrpRepoPath=$([MSBuild]::NormalizeDirectory('$(SrcDir)', 'source-build-reference-packages')) />
+  </Target>
+
   <!--
     Determine symbols tarball names and discover all intermediate symbols,
     to be used as inputs and outputs of symbols repackaging targets.

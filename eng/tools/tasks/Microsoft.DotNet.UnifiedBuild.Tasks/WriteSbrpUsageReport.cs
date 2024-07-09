@@ -12,13 +12,11 @@ using Microsoft.Build.Utilities;
 namespace Microsoft.DotNet.UnifiedBuild.Tasks
 {
     /// <summary>
-    /// Scans the source-build-reference-packages repo for various options:
+    /// Reports the usage of the source-build-reference-packages:
     /// 1. Unreferenced packages
     /// 2. Unreferenced TFMs
-    /// 3. Usage of specified packages
-    /// 4. Usage of specified TFMS
     /// </summary>
-    public class ScanForUnreferencedSbrps : Task
+    public class WriteSbrpUsageReport : Task
     {
         /// <summary>
         /// Path to the SBRP repo to scan.
