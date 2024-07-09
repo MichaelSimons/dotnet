@@ -28,43 +28,56 @@ namespace Microsoft.DotNet.UnifiedBuild.Tasks
 
         public override bool Execute()
         {
-            ReadSbrpPackages("referencePackages");
-            ReadSbrpPackages("textOnlyPackages");
+            Log.LogMessage($"Scanning for SBRP Package Usage...");
+
+            ReadSbrpPackages("referencePackages", trackTfms: true);
+            ReadSbrpPackages("textOnlyPackages", trackTfms: false);
 
             return !Log.HasLoggedErrors;
         }
 
         private string GetSBRPPackagesPath(string packageType) => Path.Combine(SbrpRepoPath, "src", packageType, "src");
 
-        private void ReadSbrpPackages(string packageType)
+        private void ReadSbrpPackages(string packageType, bool trackTfms)
         {
             EnumerationOptions options = new() { RecurseSubdirectories = true };
 
             foreach (string projectPath in Directory.GetFiles(GetSBRPPackagesPath(packageType), "*.csproj", options))
             {
-                XDocument xmlDoc = XDocument.Load(projectPath);
-                IEnumerable<string> tfms = xmlDoc.Element("Project")?
-                    .Elements("PropertyGroup")
-                    .Elements("TargetFrameworks")
-                    .FirstOrDefault()?.Value?.Split(';');
-
-                if (tfms == null || !tfms.Any())
-                {
-                    Log.LogError($"No TargetFrameworks were delected in {projectPath}.");
-                }
-
-                string version = Directory.GetParent(projectPath).Name;
+                DirectoryInfo directory = Directory.GetParent(projectPath);
+                string version = directory.Name;
                 string projectName = Path.GetFileNameWithoutExtension(projectPath);
                 PackageInfo info = new()
                 {
                     Version = version,
                     Name = projectName[..(projectName.Length - 1 - version.Length)],
-                    Type = packageType,
-                    Tfms = new HashSet<string>(tfms),
+                    Path = directory.FullName,
                 };
 
+                if (trackTfms)
+                {
+                    XDocument xmlDoc = XDocument.Load(projectPath);
+                    // Reference packages are generated using the TargetFrameworks property
+                    // so there is no need to handle the TargetFramework property.
+                    string[] tfms = xmlDoc.Element("Project")?
+                        .Elements("PropertyGroup")
+                        .Elements("TargetFrameworks")
+                        .FirstOrDefault()?.Value?.Split(';');
+
+                    if (tfms == null || !tfms.Any())
+                    {
+                        Log.LogError($"No TargetFrameworks were delected in {projectPath}.");
+                    }
+
+                    info.Tfms = new HashSet<string>(tfms);
+                }
+                else
+                {
+                    info.Tfms = [];
+                }
+
                 _sbrpPackages.Add($"{info.Id}", info);
-                Log.LogMessage($"Detected SBRP Package: {info.Id} {packageType}");
+                Log.LogMessage($"Detected package: {info.Id});
             }
         }
 
@@ -73,7 +86,7 @@ namespace Microsoft.DotNet.UnifiedBuild.Tasks
             public string Id => $"{Name}/{Version}";
             public string Name { get; set; }
             public string Version { get; set; }
-            public string Type{ get; set; }
+            public string Path{ get; set; }
             public HashSet<string> Tfms { get; set; }
             public HashSet<string> References { get; } = [];
             public HashSet<string> ReferencedTfms { get; } = [];
