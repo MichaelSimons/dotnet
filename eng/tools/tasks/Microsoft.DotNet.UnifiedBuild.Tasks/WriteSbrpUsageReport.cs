@@ -8,88 +8,158 @@ using System.Linq;
 using System.Xml.Linq;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
+using NuGet.ProjectModel;
 
-namespace Microsoft.DotNet.UnifiedBuild.Tasks
+namespace Microsoft.DotNet.UnifiedBuild.Tasks;
+
+/// <summary>
+/// Reports the usage of the source-build-reference-packages:
+/// 1. Unreferenced packages
+/// 2. Unreferenced TFMs
+/// </summary>
+public class WriteSbrpUsageReport : Task
 {
+    private const string SbrpRepoName = "source-build-reference-packages";
+
+    private readonly Dictionary<string, PackageInfo> _sbrpPackages = [];
+
     /// <summary>
-    /// Reports the usage of the source-build-reference-packages:
-    /// 1. Unreferenced packages
-    /// 2. Unreferenced TFMs
+    /// Path to the SBRP repo to scan.
     /// </summary>
-    public class WriteSbrpUsageReport : Task
+    [Required]
+    public string VmrSrcPath { get; set; }
+
+    public override bool Execute()
     {
-        /// <summary>
-        /// Path to the SBRP repo to scan.
-        /// </summary>
-        [Required]
-        public string SbrpRepoPath { get; set; }
+        Log.LogMessage($"Scanning for SBRP Package Usage...");
 
-        private readonly Dictionary<string, PackageInfo> _sbrpPackages = [];
+        ReadSbrpPackages("referencePackages", trackTfms: true);
+        ReadSbrpPackages("textOnlyPackages", trackTfms: false);
 
-        public override bool Execute()
+        ScanProjectReferences();
+
+        GenerateUsageReport();
+
+        return !Log.HasLoggedErrors;
+    }
+
+    private void GenerateUsageReport()
+    {
+        PurgeNonReferencedReferences();
+    }
+
+    /// <summary>
+    /// Removes all references from unreferenced SBRP packages.
+    /// </summary>
+    private void PurgeNonReferencedReferences()
+    {
+        bool hasPurged;
+        do
         {
-            Log.LogMessage($"Scanning for SBRP Package Usage...");
+            hasPurged = false;
+            PackageInfo[] unrefPkgs = _sbrpPackages.Values.Where(pkg => pkg.References.Count == 0).ToArray();
 
-            ReadSbrpPackages("referencePackages", trackTfms: true);
-            ReadSbrpPackages("textOnlyPackages", trackTfms: false);
-
-            return !Log.HasLoggedErrors;
-        }
-
-        private string GetSBRPPackagesPath(string packageType) => Path.Combine(SbrpRepoPath, "src", packageType, "src");
-
-        private void ReadSbrpPackages(string packageType, bool trackTfms)
-        {
-            EnumerationOptions options = new() { RecurseSubdirectories = true };
-
-            foreach (string projectPath in Directory.GetFiles(GetSBRPPackagesPath(packageType), "*.csproj", options))
+            foreach (PackageInfo sbrpPkg in _sbrpPackages.Values)
             {
-                DirectoryInfo directory = Directory.GetParent(projectPath);
-                string version = directory.Name;
-                string projectName = Path.GetFileNameWithoutExtension(projectPath);
-                PackageInfo info = new()
+                foreach (PackageInfo unrefPkg in unrefPkgs)
                 {
-                    Version = version,
-                    Name = projectName[..(projectName.Length - 1 - version.Length)],
-                    Path = directory.FullName,
-                };
-
-                if (trackTfms)
-                {
-                    XDocument xmlDoc = XDocument.Load(projectPath);
-                    // Reference packages are generated using the TargetFrameworks property
-                    // so there is no need to handle the TargetFramework property.
-                    string[] tfms = xmlDoc.Element("Project")?
-                        .Elements("PropertyGroup")
-                        .Elements("TargetFrameworks")
-                        .FirstOrDefault()?.Value?.Split(';');
-
-                    if (tfms == null || !tfms.Any())
+                    var unref = sbrpPkg.References
+                        .SingleOrDefault(path => path.Contains(SbrpRepoName) && path.Contains($"{unrefPkg.Name}.{unrefPkg.Version}"));
+                    if (unref != null)
                     {
-                        Log.LogError($"No TargetFrameworks were delected in {projectPath}.");
+                        Log.LogMessage($"Removing {unrefPkg.Id} from {sbrpPkg.Id}'s references.");
+                        sbrpPkg.References.Remove(unref);
+                        hasPurged = true;
                     }
-
-                    info.Tfms = new HashSet<string>(tfms);
                 }
-                else
+            }
+        } while (hasPurged);
+    }
+
+    private string GetSBRPPackagesPath(string packageType) =>
+        Path.Combine(VmrSrcPath, SbrpRepoName, "src", packageType, "src");
+
+    private void ReadSbrpPackages(string packageType, bool trackTfms)
+    {
+        EnumerationOptions options = new() { RecurseSubdirectories = true };
+
+        foreach (string projectPath in Directory.GetFiles(GetSBRPPackagesPath(packageType), "*.csproj", options))
+        {
+            DirectoryInfo directory = Directory.GetParent(projectPath);
+            string version = directory.Name;
+            string projectName = Path.GetFileNameWithoutExtension(projectPath);
+            PackageInfo info = new()
+            {
+                Version = version,
+                Name = projectName[..(projectName.Length - 1 - version.Length)],
+                Path = directory.FullName,
+            };
+
+            if (trackTfms)
+            {
+                XDocument xmlDoc = XDocument.Load(projectPath);
+                // Reference packages are generated using the TargetFrameworks property
+                // so there is no need to handle the TargetFramework property.
+                string[] tfms = xmlDoc.Element("Project")?
+                    .Elements("PropertyGroup")
+                    .Elements("TargetFrameworks")
+                    .FirstOrDefault()?.Value?.Split(';');
+
+                if (tfms == null || tfms.Length == 0)
                 {
-                    info.Tfms = [];
+                    Log.LogError($"No TargetFrameworks were delected in {projectPath}.");
                 }
 
-                _sbrpPackages.Add($"{info.Id}", info);
-                Log.LogMessage($"Detected package: {info.Id});
+                info.Tfms = new HashSet<string>(tfms);
+            }
+            else
+            {
+                info.Tfms = [];
+            }
+
+            _sbrpPackages.Add($"{info.Id}", info);
+            Log.LogMessage($"Detected package: {info.Id}");
+        }
+    }
+
+    private void ScanProjectReferences()
+    {
+        EnumerationOptions options = new() { RecurseSubdirectories = true };
+
+        foreach (string projectJsonFile in Directory.GetFiles(VmrSrcPath, "project.assets.json", options))
+        {
+            LockFile lockFile = new LockFileFormat().Read(projectJsonFile);
+            foreach (LockFileTargetLibrary lib in lockFile.Targets.SelectMany(t => t.Libraries))
+            {
+                if (!_sbrpPackages.TryGetValue($"{lib.Name}/{lib.Version}", out PackageInfo info))
+                {
+                    continue;
+                }
+
+                if (!info.References.Contains(lockFile.Path))
+                {
+                    info.References.Add(lockFile.Path);
+                }
+
+                IEnumerable<string> tfms = lib.CompileTimeAssemblies
+                    .Where(asm => asm.Path.StartsWith("lib") || asm.Path.StartsWith("ref"))
+                    .Select(asm => asm.Path.Split('/')[1]);
+                foreach (string tfm in tfms)
+                {
+                    info.ReferencedTfms.Add(tfm);
+                }
             }
         }
+    }
 
-        private class PackageInfo
-        {
-            public string Id => $"{Name}/{Version}";
-            public string Name { get; set; }
-            public string Version { get; set; }
-            public string Path{ get; set; }
-            public HashSet<string> Tfms { get; set; }
-            public HashSet<string> References { get; } = [];
-            public HashSet<string> ReferencedTfms { get; } = [];
-        }
+    private class PackageInfo
+    {
+        public string Id => $"{Name}/{Version}";
+        public string Name { get; set; }
+        public string Version { get; set; }
+        public string Path { get; set; }
+        public HashSet<string> Tfms { get; set; }
+        public HashSet<string> References { get; } = [];
+        public HashSet<string> ReferencedTfms { get; } = [];
     }
 }
