@@ -25,7 +25,7 @@
   <Target Name="ReportSbrpUsage"
           AfterTargets="Build"
           Condition="'$(SkipReportSbrpUsage)' != 'true'">
-    <WriteSbrpUsageReport SbrpRepoPath="$([MSBuild]::NormalizeDirectory('$(SrcDir)', 'source-build-reference-packages'))" />
+    <WriteSbrpUsageReport SrcPath="$(SrcDir)" />
   </Target>
 
   <!--

@@ -27,7 +27,7 @@ public class WriteSbrpUsageReport : Task
     /// Path to the SBRP repo to scan.
     /// </summary>
     [Required]
-    public string VmrSrcPath { get; set; }
+    public string SrcPath { get; set; }
 
     public override bool Execute()
     {
@@ -77,7 +77,7 @@ public class WriteSbrpUsageReport : Task
     }
 
     private string GetSBRPPackagesPath(string packageType) =>
-        Path.Combine(VmrSrcPath, SbrpRepoName, "src", packageType, "src");
+        Path.Combine(SrcPath, SbrpRepoName, "src", packageType, "src");
 
     private void ReadSbrpPackages(string packageType, bool trackTfms)
     {
@@ -126,7 +126,7 @@ public class WriteSbrpUsageReport : Task
     {
         EnumerationOptions options = new() { RecurseSubdirectories = true };
 
-        foreach (string projectJsonFile in Directory.GetFiles(VmrSrcPath, "project.assets.json", options))
+        foreach (string projectJsonFile in Directory.GetFiles(SrcPath, "project.assets.json", options))
         {
             LockFile lockFile = new LockFileFormat().Read(projectJsonFile);
             foreach (LockFileTargetLibrary lib in lockFile.Targets.SelectMany(t => t.Libraries))
