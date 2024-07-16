@@ -58,9 +58,14 @@ public class WriteSbrpUsageReport : Task
         };
         PurgeNonReferencedReferences();
         report.UnreferencedSbrps = [.. GetUnreferencedSbrps().Select(pkg => pkg.Id).OrderBy(id => id)];
-        report.UnreferencedSbrpTfms = _sbrpPackages.ToDictionary(
-            pkg => pkg.Key,
-            pkg => new HashSet<string>(pkg.Value.Tfms.Except(pkg.Value.References.SelectMany(kvp => kvp.Value)))
+        report.UnreferencedSbrpTfms = _sbrpPackages
+            .OrderBy(pkg => pkg.Key)
+            .ToDictionary(
+                pkg => pkg.Key, 
+                pkg => pkg.Value.Tfms
+                    .Except(pkg.Value.References.SelectMany(kvp => kvp.Value))
+                    .OrderBy(tfm => tfm)
+                    .ToHashSet()
         );
 
         string jsonFilePath = Path.Combine(OutputPath, "sbrpPackageUsage.json");
