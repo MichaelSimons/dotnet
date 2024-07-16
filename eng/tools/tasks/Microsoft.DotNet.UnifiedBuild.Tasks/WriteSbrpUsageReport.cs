@@ -2,12 +2,15 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Xml.Linq;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
+using Microsoft.DotNet.UnifiedBuild.Tasks.UsageReport;
 using NuGet.ProjectModel;
 
 namespace Microsoft.DotNet.UnifiedBuild.Tasks;
@@ -29,6 +32,12 @@ public class WriteSbrpUsageReport : Task
     [Required]
     public string SrcPath { get; set; }
 
+    /// <summary>
+    /// Path to the usage report to.
+    /// </summary>
+    [Required]
+    public string OutputPath { get; set; }
+
     public override bool Execute()
     {
         Log.LogMessage($"Scanning for SBRP Package Usage...");
@@ -45,7 +54,19 @@ public class WriteSbrpUsageReport : Task
 
     private void GenerateUsageReport()
     {
+        Report report = new()
+        {
+            Sbrps = [.. _sbrpPackages.Values]
+        };
         PurgeNonReferencedReferences();
+        report.UnreferencedSbrps = GetUnreferencedSbrps(pkg => pkg.Id);
+        //report.UreferencedSbrpTfms = GetUnreferencedSbrps(pkg => pkg.Tfms);
+
+        string jsonFilePath = Path.Combine(OutputPath, "sbrpPackages.json");
+#pragma warning disable CA1869 // Cache and reuse 'JsonSerializerOptions' instances
+        string jsonContent = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+#pragma warning restore CA1869 // Cache and reuse 'JsonSerializerOptions' instances
+        File.WriteAllText(jsonFilePath, jsonContent);
     }
 
     /// <summary>
@@ -58,7 +79,7 @@ public class WriteSbrpUsageReport : Task
         do
         {
             hasPurged = false;
-            PackageInfo[] unrefPkgs = _sbrpPackages.Values.Where(pkg => pkg.References.Count == 0).ToArray();
+            PackageInfo[] unrefPkgs = GetUnreferencedSbrps(pkg => pkg);
 
             foreach (PackageInfo sbrpPkg in _sbrpPackages.Values)
             {
@@ -77,14 +98,20 @@ public class WriteSbrpUsageReport : Task
         } while (hasPurged);
     }
 
-    private string GetSBRPPackagesPath(string packageType) =>
+    private TSelector[] GetUnreferencedSbrps<TSelector> (Func<PackageInfo, TSelector> selector) =>
+        _sbrpPackages.Values
+            .Where(pkg => pkg.References.Count == 0)
+            .Select(selector)
+            .ToArray();
+
+    private string GetSbrpPackagesPath(string packageType) =>
         Path.Combine(SrcPath, SbrpRepoName, "src", packageType, "src");
 
     private void ReadSbrpPackages(string packageType, bool trackTfms)
     {
         EnumerationOptions options = new() { RecurseSubdirectories = true };
 
-        foreach (string projectPath in Directory.GetFiles(GetSBRPPackagesPath(packageType), "*.csproj", options))
+        foreach (string projectPath in Directory.GetFiles(GetSbrpPackagesPath(packageType), "*.csproj", options))
         {
             DirectoryInfo directory = Directory.GetParent(projectPath);
             string version = directory.Name;
@@ -164,5 +191,12 @@ public class WriteSbrpUsageReport : Task
 
         // Dictionary of projects referencing the SBRP and the TFMs referenced by each project
         public Dictionary<string, HashSet<string>> References { get; } = [];
+    }
+
+    private class Report
+    {
+        public PackageInfo[] Sbrps { get; set; }
+        public string[] UnreferencedSbrps { get; set; }
+        public Dictionary<string, HashSet<string>> UnreferencedSbrpTfms { get; set; }
     }
 }
