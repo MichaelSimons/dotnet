@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,7 +9,6 @@ using System.Text.Json;
 using System.Xml.Linq;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
-using Microsoft.DotNet.UnifiedBuild.Tasks.UsageReport;
 using NuGet.ProjectModel;
 
 namespace Microsoft.DotNet.UnifiedBuild.Tasks;
