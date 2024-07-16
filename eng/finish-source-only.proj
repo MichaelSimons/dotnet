@@ -24,8 +24,9 @@
   <UsingTask TaskName="Microsoft.DotNet.UnifiedBuild.Tasks.WriteSBRPUsageReport" AssemblyFile="$(MicrosoftDotNetUnifiedBuildTasksAssembly)" TaskFactory="TaskHostFactory" />
   <Target Name="ReportSbrpUsage"
           AfterTargets="Build"
-          Condition="'$(SkipReportSbrpUsage)' != 'true'">
-    <WriteSbrpUsageReport SrcPath="$(SrcDir)" />
+          Condition="'$(ReportSbrpUsage)' == 'true'">
+    <WriteSbrpUsageReport SrcPath="$(SrcDir)" 
+                          OutputPath="$(ArtifactsLogDir)" />
   </Target>
 
   <!--

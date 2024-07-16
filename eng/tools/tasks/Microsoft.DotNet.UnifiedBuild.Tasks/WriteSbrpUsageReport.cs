@@ -56,13 +56,16 @@ public class WriteSbrpUsageReport : Task
     {
         Report report = new()
         {
-            Sbrps = [.. _sbrpPackages.Values]
+            Sbrps = [.. _sbrpPackages.Values.OrderBy(pkg => pkg.Id)]
         };
         PurgeNonReferencedReferences();
-        report.UnreferencedSbrps = GetUnreferencedSbrps(pkg => pkg.Id);
+        report.UnreferencedSbrps = GetUnreferencedSbrps()
+                .Select(pkg => pkg.Id)
+                .OrderBy(id => id)
+                .ToArray();
         //report.UreferencedSbrpTfms = GetUnreferencedSbrps(pkg => pkg.Tfms);
 
-        string jsonFilePath = Path.Combine(OutputPath, "sbrpPackages.json");
+        string jsonFilePath = Path.Combine(OutputPath, "sbrpPackageUsage.json");
 #pragma warning disable CA1869 // Cache and reuse 'JsonSerializerOptions' instances
         string jsonContent = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
 #pragma warning restore CA1869 // Cache and reuse 'JsonSerializerOptions' instances
@@ -79,7 +82,9 @@ public class WriteSbrpUsageReport : Task
         do
         {
             hasPurged = false;
-            PackageInfo[] unrefPkgs = GetUnreferencedSbrps(pkg => pkg);
+            PackageInfo[] unrefPkgs = GetUnreferencedSbrps()
+                .Select(pkg => pkg)
+                .ToArray();
 
             foreach (PackageInfo sbrpPkg in _sbrpPackages.Values)
             {
@@ -98,11 +103,8 @@ public class WriteSbrpUsageReport : Task
         } while (hasPurged);
     }
 
-    private TSelector[] GetUnreferencedSbrps<TSelector> (Func<PackageInfo, TSelector> selector) =>
-        _sbrpPackages.Values
-            .Where(pkg => pkg.References.Count == 0)
-            .Select(selector)
-            .ToArray();
+    private IEnumerable<PackageInfo> GetUnreferencedSbrps() =>
+        _sbrpPackages.Values.Where(pkg => pkg.References.Count == 0);
 
     private string GetSbrpPackagesPath(string packageType) =>
         Path.Combine(SrcPath, SbrpRepoName, "src", packageType, "src");
