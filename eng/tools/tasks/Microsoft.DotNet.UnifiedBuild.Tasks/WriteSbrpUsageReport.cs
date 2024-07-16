@@ -59,11 +59,11 @@ public class WriteSbrpUsageReport : Task
             Sbrps = [.. _sbrpPackages.Values.OrderBy(pkg => pkg.Id)]
         };
         PurgeNonReferencedReferences();
-        report.UnreferencedSbrps = GetUnreferencedSbrps()
-                .Select(pkg => pkg.Id)
-                .OrderBy(id => id)
-                .ToArray();
-        //report.UreferencedSbrpTfms = GetUnreferencedSbrps(pkg => pkg.Tfms);
+        report.UnreferencedSbrps = [.. GetUnreferencedSbrps().Select(pkg => pkg.Id).OrderBy(id => id)];
+        report.UnreferencedSbrpTfms = _sbrpPackages.ToDictionary(
+            pkg => pkg.Key,
+            pkg => new HashSet<string>(pkg.Value.Tfms.Except(pkg.Value.References.SelectMany(kvp => kvp.Value)))
+        );
 
         string jsonFilePath = Path.Combine(OutputPath, "sbrpPackageUsage.json");
 #pragma warning disable CA1869 // Cache and reuse 'JsonSerializerOptions' instances
