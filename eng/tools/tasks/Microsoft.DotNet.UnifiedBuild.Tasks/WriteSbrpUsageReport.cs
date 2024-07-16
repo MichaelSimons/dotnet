@@ -52,27 +52,16 @@ public class WriteSbrpUsageReport : Task
 
     private void GenerateUsageReport()
     {
-        Report report = new()
-        {
-            Sbrps = [.. _sbrpPackages.Values.OrderBy(pkg => pkg.Id)]
-        };
+        Report report = new();
+        report.Sbrps = [.. _sbrpPackages.Values.OrderBy(pkg => pkg.Id)];
         PurgeNonReferencedReferences();
         report.UnreferencedSbrps = [.. GetUnreferencedSbrps().Select(pkg => pkg.Id).OrderBy(id => id)];
-        report.UnreferencedSbrpTfms = _sbrpPackages
-            .OrderBy(pkg => pkg.Key)
-            .ToDictionary(
-                pkg => pkg.Key, 
-                pkg => pkg.Value.Tfms
-                    .Except(pkg.Value.References.SelectMany(kvp => kvp.Value))
-                    .OrderBy(tfm => tfm)
-                    .ToHashSet()
-        );
 
-        string jsonFilePath = Path.Combine(OutputPath, "sbrpPackageUsage.json");
+        string reportFilePath = Path.Combine(OutputPath, "sbrpPackageUsage.json");
 #pragma warning disable CA1869 // Cache and reuse 'JsonSerializerOptions' instances
         string jsonContent = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
 #pragma warning restore CA1869 // Cache and reuse 'JsonSerializerOptions' instances
-        File.WriteAllText(jsonFilePath, jsonContent);
+        File.WriteAllText(reportFilePath, jsonContent);
     }
 
     /// <summary>
@@ -202,6 +191,5 @@ public class WriteSbrpUsageReport : Task
     {
         public PackageInfo[] Sbrps { get; set; }
         public string[] UnreferencedSbrps { get; set; }
-        public Dictionary<string, HashSet<string>> UnreferencedSbrpTfms { get; set; }
     }
 }
