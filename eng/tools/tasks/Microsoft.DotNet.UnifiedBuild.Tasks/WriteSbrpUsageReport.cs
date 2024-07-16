@@ -24,7 +24,7 @@ public class WriteSbrpUsageReport : Task
     private readonly Dictionary<string, PackageInfo> _sbrpPackages = [];
 
     /// <summary>
-    /// Path to the SBRP repo to scan.
+    /// Path to the VMR src directory.
     /// </summary>
     [Required]
     public string SrcPath { get; set; }
@@ -49,7 +49,8 @@ public class WriteSbrpUsageReport : Task
     }
 
     /// <summary>
-    /// Removes all references from unreferenced SBRP packages.
+    /// Removes all references from unreferenced SBRP packages. This is necessary to determine the
+    /// complete set of unreferenced SBRP packages.
     /// </summary>
     private void PurgeNonReferencedReferences()
     {
@@ -63,7 +64,7 @@ public class WriteSbrpUsageReport : Task
             {
                 foreach (PackageInfo unrefPkg in unrefPkgs)
                 {
-                    var unref = sbrpPkg.References
+                    var unref = sbrpPkg.References.Keys
                         .SingleOrDefault(path => path.Contains(SbrpRepoName) && path.Contains($"{unrefPkg.Name}.{unrefPkg.Version}"));
                     if (unref != null)
                     {
@@ -117,7 +118,7 @@ public class WriteSbrpUsageReport : Task
                 info.Tfms = [];
             }
 
-            _sbrpPackages.Add($"{info.Id}", info);
+            _sbrpPackages.Add(info.Id, info);
             Log.LogMessage($"Detected package: {info.Id}");
         }
     }
@@ -136,9 +137,10 @@ public class WriteSbrpUsageReport : Task
                     continue;
                 }
 
-                if (!info.References.Contains(lockFile.Path))
+                if (!info.References.TryGetValue(lockFile.Path, out HashSet<string> referencedTfms))
                 {
-                    info.References.Add(lockFile.Path);
+                    referencedTfms = [];
+                    info.References.Add(lockFile.Path, referencedTfms);
                 }
 
                 IEnumerable<string> tfms = lib.CompileTimeAssemblies
@@ -146,7 +148,7 @@ public class WriteSbrpUsageReport : Task
                     .Select(asm => asm.Path.Split('/')[1]);
                 foreach (string tfm in tfms)
                 {
-                    info.ReferencedTfms.Add(tfm);
+                    referencedTfms.Add(tfm);
                 }
             }
         }
@@ -159,7 +161,8 @@ public class WriteSbrpUsageReport : Task
         public string Version { get; set; }
         public string Path { get; set; }
         public HashSet<string> Tfms { get; set; }
-        public HashSet<string> References { get; } = [];
-        public HashSet<string> ReferencedTfms { get; } = [];
+
+        // Dictionary of projects referencing the SBRP and the TFMs referenced by each project
+        public Dictionary<string, HashSet<string>> References { get; } = [];
     }
 }
