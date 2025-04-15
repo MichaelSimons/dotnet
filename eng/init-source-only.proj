@@ -73,6 +73,7 @@
   <Target Name="ExtractToolsetPackages" DependsOnTargets="UnpackTarballs">
     <ItemGroup>
       <ToolsetPackage Include="Microsoft.DotNet.Arcade.Sdk" SourceFolder="$(PreviouslySourceBuiltPackagesPath)" Version="$(ARCADE_BOOTSTRAP_VERSION)" />
+      <!-- TODO: How should these be handled?  Should these be promoted as regular packages in the PSB or should the PSB/reference folder be trimmed to contain just these?  -->
       <ToolsetPackage Include="Microsoft.Build.NoTargets" SourceFolder="$(PreviouslySourceBuiltReferencePackagesDir)" Version="$(NOTARGETS_BOOTSTRAP_VERSION)" />
       <ToolsetPackage Include="Microsoft.Build.Traversal" SourceFolder="$(PreviouslySourceBuiltReferencePackagesDir)" Version="$(TRAVERSAL_BOOTSTRAP_VERSION)" />
     </ItemGroup>
